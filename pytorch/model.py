@@ -5,36 +5,14 @@ import torch.nn.functional as F
 
 def get_text_mask(
     text_tensors: List[torch.Tensor],
-    num_wrapping_dims: int = 0,
     padding_id: int = 0,
 ) -> torch.BoolTensor:
-    """
-    Takes the dictionary of tensors produced by a `TextField` and returns a mask
-    with 0 where the tokens are padding, and 1 otherwise. `padding_id` specifies the id of padding tokens.
-    We also handle `TextFields` wrapped by an arbitrary number of `ListFields`, where the number of wrapping
-    `ListFields` is given by `num_wrapping_dims`.
-
-    If `num_wrapping_dims == 0`, the returned mask has shape `(batch_size, num_tokens)`.
-    If `num_wrapping_dims > 0` then the returned mask has `num_wrapping_dims` extra
-    dimensions, so the shape will be `(batch_size, ..., num_tokens)`.
-
-    There could be several entries in the tensor dictionary with different shapes (e.g., one for
-    word ids, one for character ids).  In order to get a token mask, we use the tensor in
-    the dictionary with the lowest number of dimensions.  After subtracting `num_wrapping_dims`,
-    if this tensor has two dimensions we assume it has shape `(batch_size, ..., num_tokens)`,
-    and use it for the mask.  If instead it has three dimensions, we assume it has shape
-    `(batch_size, ..., num_tokens, num_features)`, and sum over the last dimension to produce
-    the mask.  Most frequently this will be a character id tensor, but it could also be a
-    featurized representation of each token, etc.
-
-    If the input `text_field_tensors` contains the "mask" key, this is returned instead of inferring the mask.
-    """
     tensor_dims = [
         (text_tensors.dim(), text_tensors)
     ]
     tensor_dims.sort(key=lambda x: x[0])
 
-    smallest_dim = tensor_dims[0][0] - num_wrapping_dims
+    smallest_dim = tensor_dims[0][0]
     if smallest_dim == 2:
         token_tensor = tensor_dims[0][1]
         return token_tensor != padding_id

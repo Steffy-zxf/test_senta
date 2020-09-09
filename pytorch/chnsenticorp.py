@@ -27,31 +27,28 @@ from tokenizer import CustomTokenizer
 class InputExample(object):
     """
     The input data structure of Transformer modules (BERT, ERNIE and so on).
+
+    Args:
+        guid (:obj:`int`):
+            Unique id for the input data.
+        text_a (:obj:`str`, `optional`, defaults to :obj:`None`):
+            The first sequence. For single sequence tasks, only this sequence must be specified.
+        text_b (:obj:`str`, `optional`, defaults to :obj:`None`):
+            The second sequence if sentence-pair.
+        label (:obj:`str`, `optional`, defaults to :obj:`None`):
+            The label of the example.
+
+    Examples:
+        .. code-block:: python
+
+            example = InputExample(guid=0,
+                            text_a='15.4寸笔记本的键盘确实爽，基本跟台式机差不多了',
+                            text_b='蛮喜欢数字小键盘，输数字特方便，样子也很美观，做工也相当不错',
+                            label='1')
     """
 
     def __init__(self, guid: int, text_a: str, text_b: Optional[str] = None, label: Optional[str] = None):
-        """
-        The input data structure.
 
-        Args:
-          guid (:obj:`int`):
-              Unique id for the input data.
-          text_a (:obj:`str`, `optional`, defaults to :obj:`None`):
-              The first sequence. For single sequence tasks, only this sequence must be specified.
-          text_b (:obj:`str`, `optional`, defaults to :obj:`None`):
-              The second sequence if sentence-pair.
-          label (:obj:`str`, `optional`, defaults to :obj:`None`):
-              The label of the example.
-
-        Examples:
-            .. code-block:: python
-                from paddlehub.datasets.base_nlp_dataset import InputExample
-
-                example = InputExample(guid=0,
-                                text_a='15.4寸笔记本的键盘确实爽，基本跟台式机差不多了',
-                                text_b='蛮喜欢数字小键盘，输数字特方便，样子也很美观，做工也相当不错',
-                                label='1')
-        """
         self.guid = guid
         self.text_a = text_a
         self.text_b = text_b
@@ -68,30 +65,29 @@ class ChnSentiCorp(torch.utils.data.Dataset):
     """
     ChnSentiCorp is a dataset for chinese sentiment classification,
     which was published by Tan Songbo at ICT of Chinese Academy of Sciences.
+
+    Args:
+        tokenizer (:obj:`BertTokenizer` or :obj:`CustomTokenizer`):
+            It tokenizes the text and encodes the data as model needed.
+        max_seq_len (:obj:`int`, `optional`, defaults to :128):
+            The maximum length (in number of tokens) for the inputs to the selected module,
+            such as ernie, bert and so on.
+        mode (:obj:`str`, `optional`, defaults to `train`):
+            It identifies the dataset mode (train, test or dev).
+
+    Examples:
+        .. code-block:: python
+            from .chnsenticorp import ChnSentiCorp
+            from .bert_tokenizer import BertTokenizer
+
+            tokenizer = BertTokenizer(vocab_file='./vocab.txt')
+
+            train_dataset = ChnSentiCorp(tokenizer=tokenizer, max_seq_len=120, mode='train')
+            dev_dataset = ChnSentiCorp(tokenizer=tokenizer, max_seq_len=120, mode='dev')
+            test_dataset = ChnSentiCorp(tokenizer=tokenizer, max_seq_len=120, mode='test')
     """
 
     def __init__(self, tokenizer: Union[CustomTokenizer], max_seq_len: int = 128, mode: str = 'train'):
-        """
-        Args:
-            tokenizer (:obj:`BertTokenizer` or :obj:`CustomTokenizer`):
-                It tokenizes the text and encodes the data as model needed.
-            max_seq_len (:obj:`int`, `optional`, defaults to :128):
-                The maximum length (in number of tokens) for the inputs to the selected module,
-                such as ernie, bert and so on.
-            mode (:obj:`str`, `optional`, defaults to `train`):
-                It identifies the dataset mode (train, test or dev).
-
-        Examples:
-            .. code-block:: python
-                from paddlehub.datasets.chnsenticorp import ChnSentiCorp
-                from paddlehub.tokenizer.bert_tokenizer import BertTokenizer
-
-                tokenizer = BertTokenizer(vocab_file='./vocab.txt')
-
-                train_dataset = ChnSentiCorp(tokenizer=tokenizer, max_seq_len=120, mode='train')
-                dev_dataset = ChnSentiCorp(tokenizer=tokenizer, max_seq_len=120, mode='dev')
-                test_dataset = ChnSentiCorp(tokenizer=tokenizer, max_seq_len=120, mode='test')
-        """
         base_path = '/mnt/zhangxuefei/.paddlehub/dataset/chnsenticorp/'
         if mode == 'train':
             data_file = 'token_train.tsv'

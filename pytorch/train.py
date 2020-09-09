@@ -27,12 +27,6 @@ args = parser.parse_args()
 def generate_batch(batch):
     label = torch.tensor([entry[1] for entry in batch])
     text = [entry[0] for entry in batch]
-    # offsets = [0] + [len(entry) for entry in text]
-    # torch.Tensor.cumsum returns the cumulative sum
-    # of elements in the dimension dim.
-    # torch.Tensor([1.0, 2.0, 3.0]).cumsum(dim=0)
-
-    # offsets = torch.tensor(offsets[:-1]).cumsum(dim=0)
     text = torch.tensor(text)
     return text, label
 
@@ -44,7 +38,7 @@ def train():
     dev_dataset = ChnSentiCorp(tokenizer=tokenizer, max_seq_len=args.max_seq_len, mode='dev')
     test_dataset = ChnSentiCorp(tokenizer=tokenizer, max_seq_len=60, mode='test')
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=generate_batch)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=generate_batch)
     dev_loader = torch.utils.data.DataLoader(dev_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=generate_batch)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=generate_batch)
 
@@ -67,12 +61,6 @@ def train():
         model.train()
         start_time = time.time()
         for i, (texts, labels) in enumerate(train_loader):
-            # texts = np.array([[417311, 93118, 173182, 117997, 213052, 595755, 1106222, 940440, 947651, 169200]], dtype='int64')
-            # print(texts)
-            # labels = np.array([1], dtype='int64')
-            # print(labels)
-            # texts = torch.from_numpy(texts)
-            # labels = torch.from_numpy(labels)
             reader_end_time = time.time()
             reader_time = reader_end_time - start_time
             outputs = model(texts, labels)
@@ -83,8 +71,6 @@ def train():
 
             ground_truth = labels.numpy()
             predictions = torch.max(outputs['probs'], 1)[1].numpy()
-            # print(outputs['probs'], predictions)
-            # print(ground_truth.numpy(), predictions[1].cpu().numpy())
             train_acc = metrics.accuracy_score(ground_truth, predictions)
             print('epoch: %d, train step: %d, train_loss: %.5f, train_acc: %.5f, reader time cost: %.5f, model time cost: %.5f' 
                 % (epoch, i, outputs['loss'].item(), train_acc, reader_time, run_model_time))
