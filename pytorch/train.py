@@ -1,5 +1,6 @@
 import argparse
 import ast
+import os
 import time
 
 from sklearn import metrics
@@ -14,12 +15,12 @@ from tokenizer import CustomTokenizer
 
 # yapf: disable
 parser = argparse.ArgumentParser(__doc__)
-parser.add_argument("--num_epoch", type=int, default=20, help="Number of epoches for fine-tuning.")
+parser.add_argument("--num_epoch", type=int, default=5, help="Number of epoches for fine-tuning.")
 parser.add_argument("--use_gpu", type=ast.literal_eval, default=True, help="Whether use GPU for fine-tuning, input should be True or False")
 parser.add_argument("--learning_rate", type=float, default=5e-4, help="Learning rate used to train with warmup.")
 parser.add_argument("--checkpoint_dir", type=str, default='saved_model.pt', help="Directory to model checkpoint")
 parser.add_argument("--max_seq_len", type=int, default=128, help="Number of words of the longest seqence.")
-parser.add_argument("--batch_size", type=int, default=32, help="Total examples' number in batch for training.")
+parser.add_argument("--batch_size", type=int, default=64, help="Total examples' number in batch for training.")
 args = parser.parse_args()
 # yapf: enable.
 
@@ -53,6 +54,11 @@ def train():
         hidden_dim=128, 
         fc_hidden_dim=96, 
         num_labels=len(train_dataset.label_list))
+
+    if os.path.exists(args.checkpoint_dir):
+        model.load_state_dict(torch.load(args.checkpoint_dir))
+        print("Loaded checkpoint from %s" % args.checkpoint_dir)
+
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
     total_steps = 0
@@ -83,9 +89,9 @@ def train():
             print('epoch: %d, train step: %d, train_loss: %.5f, train_acc: %.5f, reader time cost: %.5f, model time cost: %.5f' 
                 % (epoch, i, outputs['loss'].item(), train_acc, reader_time, run_model_time))
             total_steps += 1
-            if total_steps % 10 == 0:
+            if total_steps % 100 == 0:
                 dev_acc, loss_avg = eval(model, dev_loader)
-                msg = 'dev avg loss: %.5f, dev acc: %.5f' % (dev_acc, loss_avg)
+                msg = 'dev avg loss: %.5f, dev acc: %.5f' % (loss_avg, dev_acc)
                 if best_acc < dev_acc:
                     best_acc = dev_acc
                     torch.save(model.state_dict(), args.checkpoint_dir)
@@ -95,7 +101,7 @@ def train():
         
         test_acc, loss_avg = eval(model, test_loader)
         print('Finanly')
-        print("test acc: %.5f", test_acc)
+        print("test acc: %.5f" % test_acc)
         
 
 def eval(model, valid_dataloader):
