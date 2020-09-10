@@ -5,9 +5,9 @@ import time
 
 from sklearn import metrics
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import paddle
+import paddle.nn as nn
+import paddle.nn.functional as F
 
 from chnsenticorp import ChnSentiCorp
 from model import BowTextClassifier
@@ -25,9 +25,8 @@ args = parser.parse_args()
 # yapf: enable.
 
 def generate_batch(batch):
-    label = torch.tensor([entry[1] for entry in batch])
+    label = [entry[1] for entry in batch]
     text = [entry[0] for entry in batch]
-    text = torch.tensor(text)
     return text, label
 
 
@@ -36,11 +35,20 @@ def train():
     tokenizer = CustomTokenizer(vocab_file='/mnt/zhangxuefei/.paddlehub/modules/senta_bow/assets/vocab.txt')
     train_dataset = ChnSentiCorp(tokenizer=tokenizer, max_seq_len=args.max_seq_len, mode='train')
     dev_dataset = ChnSentiCorp(tokenizer=tokenizer, max_seq_len=args.max_seq_len, mode='dev')
-    test_dataset = ChnSentiCorp(tokenizer=tokenizer, max_seq_len=60, mode='test')
+    test_dataset = ChnSentiCorp(tokenizer=tokenizer, max_seq_len=args.max_seq_len, mode='test')
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=generate_batch)
-    dev_loader = torch.utils.data.DataLoader(dev_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=generate_batch)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=generate_batch)
+    place = paddle.CPUPlace() # paddle.CUDAPlace(ParallelEnv().dev_id)
+    paddle.disable_static(place)
+
+    # train dataset
+    # train_sampler = paddle.io.BatchSampler(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=False)
+    train_loader = paddle.io.DataLoader(train_dataset, places=place, batch_size=args.batch_size, shuffle=True, drop_last=False, return_list=True, collate_fn=generate_batch)
+    # dev dataset
+    # dev_sampler = paddle.io.BatchSampler(dataset=dev_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False)
+    dev_loader = paddle.io.DataLoader(dev_dataset, batch_size=args.batch_size, shuffle=False, places=place, drop_last=False, return_list=True, collate_fn=generate_batch)
+    # test dataset
+    # test_sampler = paddle.io.BatchSampler(dataset=test_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False)
+    test_loader = paddle.io.DataLoader(test_dataset,  batch_size=args.batch_size, shuffle=False, places=place, drop_last=False, return_list=True, collate_fn=generate_batch)
 
     model = BowTextClassifier(
         dict_dim=tokenizer.vocab_size, 
@@ -49,38 +57,39 @@ def train():
         fc_hidden_dim=96, 
         num_labels=len(train_dataset.label_list))
 
-    if os.path.exists(args.checkpoint_dir):
-        model.load_state_dict(torch.load(args.checkpoint_dir))
-        print("Loaded checkpoint from %s" % args.checkpoint_dir)
+    if os.path.exists(args.checkpoint_dir + ".pdparams"):
+        para_state_dict, opti_state_dict = paddle.load(args.checkpoint_dir)
+        model.set_dict(para_state_dict)
+        print("Loaded checkpoint from %s" % (args.checkpoint_dir+'.pdparams'))
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    optimizer = paddle.optimizer.Adam(parameters=model.parameters(), learning_rate=args.learning_rate)
 
     total_steps = 0
     best_acc = -1
     for epoch in range(args.num_epoch):
-        model.train()
         start_time = time.time()
         for i, (texts, labels) in enumerate(train_loader):
+            model.train()
             reader_end_time = time.time()
             reader_time = reader_end_time - start_time
             outputs = model(texts, labels)
-            optimizer.zero_grad()
+            optimizer.clear_gradients()
             outputs.get('loss').backward()
             optimizer.step()
             run_model_time = time.time() - reader_end_time
 
             ground_truth = labels.numpy()
-            predictions = torch.max(outputs['probs'], 1)[1].numpy()
+            predictions = np.argmax(outputs['probs'].numpy(), axis=1)
             train_acc = metrics.accuracy_score(ground_truth, predictions)
             print('epoch: %d, train step: %d, train_loss: %.5f, train_acc: %.5f, reader time cost: %.5f, model time cost: %.5f' 
-                % (epoch, i, outputs['loss'].item(), train_acc, reader_time, run_model_time))
+                % (epoch, i, outputs['loss'].numpy(), train_acc, reader_time, run_model_time))
             total_steps += 1
-            if total_steps % 50 == 0:
+            if total_steps % 10 == 0:
                 dev_acc, loss_avg = eval(model, dev_loader)
                 msg = 'dev avg loss: %.5f, dev acc: %.5f' % (loss_avg, dev_acc)
                 if best_acc < dev_acc:
                     best_acc = dev_acc
-                    torch.save(model.state_dict(), args.checkpoint_dir)
+                    paddle.save(model.state_dict(), args.checkpoint_dir)
                     msg += ', best acc: %.5f' % best_acc
                 print(msg)
             start_time = time.time()
@@ -95,20 +104,20 @@ def eval(model, valid_dataloader):
     loss_all = 0
     predition_all = np.array([], dtype=np.int32)
     truth_all = np.array([], dtype=np.int32)
-    with torch.no_grad():
-        for texts, labels in valid_dataloader:
-            outputs = model(texts, labels)
-            loss = outputs.get('loss')
-            loss_all += loss
-            labels = labels.numpy()
-            preditions = torch.max(outputs['probs'], 1)[1].numpy()
-            truth_all = np.append(truth_all, labels)
-            predition_all = np.append(predition_all, preditions)
+    # with paddle.no_grad():
+    for texts, labels in valid_dataloader:
+        outputs = model(texts, labels)
+        loss = outputs.get('loss')
+        loss_all += loss
+        labels = labels.numpy()
+        preditions = np.argmax(outputs['probs'].numpy(), axis=1)
+        truth_all = np.append(truth_all, labels)
+        predition_all = np.append(predition_all, preditions)
 
     dev_acc = metrics.accuracy_score(truth_all, predition_all)
     loss_avg = loss_all / len(valid_dataloader) 
     return dev_acc, loss_avg
 
 
-
-train()
+if __name__ == "__main__":
+    train()
